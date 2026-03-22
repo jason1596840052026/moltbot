@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>molbot 聊天頁</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="topbar">
+            <div>
+                <h1>molbot</h1>
+                <p class="subtitle">前端串接成功，這是聊天頁初版</p>
+            </div>
+            <div class="meta">
+                <div id="statusText">狀態：待命中</div>
+                <div id="modelText">模型：尚未取得</div>
+            </div>
+        </header>
+
+        <main class="chat-area" id="chatArea">
+            <div class="message ai">
+                <div class="bubble">
+                    你好，我是 molbot。現在已經完成前端串接，可以開始聊天。
+                </div>
+            </div>
+        </main>
+
+        <footer class="composer">
+            <textarea
+                id="messageInput"
+                placeholder="輸入訊息，Enter 送出，Shift+Enter 換行"
+            ></textarea>
+
+            <div class="composer-actions">
+                <button id="clearBtn" type="button">清空聊天</button>
+                <button id="sendBtn" type="button">送出</button>
+            </div>
+        </footer>
+    </div>
+
+    <script src="./app.js"></script>
+</body>
+</html>
