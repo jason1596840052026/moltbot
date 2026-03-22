@@ -7,7 +7,22 @@ from flask_cors import CORS
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+app = Flask(__name__)
+
+CORS(
+    app,
+    resources={
+        r"/*": {
+            "origins": [
+                "https://molbot-frontend.vercel.app",
+                "http://127.0.0.1:5500",
+                "http://localhost:5500",
+                "http://127.0.0.1:3000",
+                "http://localhost:3000"
+            ]
+        }
+    }
+)
 
 API_KEY = os.getenv("NVIDIA_API_KEY")
 MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
