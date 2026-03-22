@@ -6,6 +6,7 @@ const statusText = document.getElementById("statusText");
 const modelText = document.getElementById("modelText");
 
 const API_URL = "https://moltbot-ckvn.onrender.com/chat";
+let chatHistory = [];
 
 function appendMessage(role, text) {
     const wrapper = document.createElement("div");
@@ -29,6 +30,7 @@ function setLoading(isLoading) {
 }
 
 function clearChat() {
+    chatHistory = [];
     chatArea.innerHTML = `
         <div class="message ai">
             <div class="bubble">
@@ -37,6 +39,7 @@ function clearChat() {
         </div>
     `;
     statusText.textContent = "狀態：待命中";
+    modelText.textContent = "模型：尚未取得";
 }
 
 async function sendMessage() {
@@ -46,6 +49,8 @@ async function sendMessage() {
         statusText.textContent = "狀態：請先輸入訊息";
         return;
     }
+
+    const historyToSend = chatHistory.slice(-10);
 
     appendMessage("user", message);
     messageInput.value = "";
@@ -59,7 +64,10 @@ async function sendMessage() {
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({
+                message,
+                history: historyToSend
+            })
         });
 
         const data = await response.json();
@@ -73,6 +81,16 @@ async function sendMessage() {
 
         loadingMessage.querySelector(".bubble").textContent =
             data.reply || "沒有取得回覆";
+
+        chatHistory.push({
+            role: "user",
+            content: message
+        });
+
+        chatHistory.push({
+            role: "assistant",
+            content: data.reply || "沒有取得回覆"
+        });
 
         modelText.textContent = `模型：${data.model || "未知"}`;
         statusText.textContent = "狀態：成功";
