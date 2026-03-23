@@ -29,6 +29,21 @@ function normalizeText(value) {
   return typeof value === "string" ? value.replace(/\r\n/g, "\n").trim() : "";
 }
 
+function normalizeForCompare(value) {
+  return normalizeText(value)
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{2,}/g, "\n")
+    .replace(/[，。！？；：、,.!?;:]/g, "")
+    .trim();
+}
+
+function splitIntoParagraphs(value) {
+  return normalizeText(value)
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function cleanMessages(messages) {
   if (!Array.isArray(messages)) return [];
 
@@ -52,10 +67,12 @@ function renderTransientError(message) {
   if (!elements.messages) return;
 
   const el = document.createElement("div");
-  el.className = "message assistant";
+  el.className = "message-row assistant";
   el.innerHTML = `
     <div class="message-role">系統</div>
-    <div class="message-content">${escapeHtml(`錯誤：${message}`)}</div>
+    <div class="message assistant">
+      <div class="message-content">${escapeHtml(`錯誤：${message}`)}</div>
+    </div>
   `;
 
   elements.messages.appendChild(el);
@@ -99,18 +116,30 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function getRoleClass(role) {
+  return role === "user" ? "user" : "assistant";
+}
+
+function getRoleLabel(role) {
+  if (role === "user") return "你";
+  if (role === "system") return "系統";
+  return "Molbot";
+}
+
 function renderMessages() {
   if (!elements.messages) return;
 
   elements.messages.innerHTML = state.messages
     .map((msg) => {
-      const roleClass = msg.role === "user" ? "user" : "assistant";
-      const roleLabel = msg.role === "user" ? "你" : "Molbot";
+      const roleClass = getRoleClass(msg.role);
+      const roleLabel = getRoleLabel(msg.role);
 
       return `
-        <div class="message ${roleClass}">
+        <div class="message-row ${roleClass}">
           <div class="message-role">${roleLabel}</div>
-          <div class="message-content">${escapeHtml(msg.content).replace(/\n/g, "<br>")}</div>
+          <div class="message ${roleClass}">
+            <div class="message-content">${escapeHtml(msg.content).replace(/\n/g, "<br>")}</div>
+          </div>
         </div>
       `;
     })
@@ -194,11 +223,13 @@ function showPendingStatus(text = "思考中...") {
   removePendingStatus();
 
   const el = document.createElement("div");
-  el.className = "message assistant pending-message";
+  el.className = "message-row assistant";
   el.dataset.pending = "true";
   el.innerHTML = `
     <div class="message-role">Molbot</div>
-    <div class="message-content">${escapeHtml(text)}</div>
+    <div class="message assistant pending-message">
+      <div class="message-content">${escapeHtml(text)}</div>
+    </div>
   `;
 
   state.pendingStatusEl = el;
@@ -222,7 +253,15 @@ function removeOverlap(previousText, newText) {
 
   if (!prev || !next) return next;
 
-  const maxCheck = Math.min(prev.length, next.length, 200);
+  if (next === prev) return "";
+  if (next.startsWith(prev)) return next.slice(prev.length).trim();
+
+  const prevNormalized = normalizeForCompare(prev);
+  const nextNormalized = normalizeForCompare(next);
+
+  if (nextNormalized === prevNormalized) return "";
+
+  const maxCheck = Math.min(prev.length, next.length, 240);
 
   for (let len = maxCheck; len >= 20; len--) {
     const prevTail = prev.slice(-len);
@@ -232,8 +271,54 @@ function removeOverlap(previousText, newText) {
     }
   }
 
-  if (next === prev) return "";
-  if (next.startsWith(prev)) return next.slice(prev.length).trim();
+  const prevParagraphs = splitIntoParagraphs(prev);
+  const nextParagraphs = splitIntoParagraphs(next);
+
+  if (prevParagraphs.length > 0 && nextParagraphs.length > 0) {
+    const prevTailParagraphs = prevParagraphs.slice(-2).map(normalizeForCompare);
+    let cutIndex = 0;
+
+    for (let i = 0; i < Math.min(2, nextParagraphs.length); i++) {
+      const candidate = normalizeForCompare(nextParagraphs[i]);
+      if (prevTailParagraphs.includes(candidate)) {
+        cutIndex = i + 1;
+      } else {
+        break;
+      }
+    }
+
+    if (cutIndex > 0) {
+      return nextParagraphs.slice(cutIndex).join("\n").trim();
+    }
+  }
+
+  const prevSentences = prev
+    .split(/(?<=[。！？!?；;\n])/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const nextSentences = next
+    .split(/(?<=[。！？!?；;\n])/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (prevSentences.length > 0 && nextSentences.length > 0) {
+    const recentPrev = prevSentences.slice(-2).map(normalizeForCompare);
+    let duplicateCount = 0;
+
+    for (const sentence of nextSentences.slice(0, 2)) {
+      const normalizedSentence = normalizeForCompare(sentence);
+      if (recentPrev.includes(normalizedSentence)) {
+        duplicateCount += 1;
+      } else {
+        break;
+      }
+    }
+
+    if (duplicateCount > 0) {
+      return nextSentences.slice(duplicateCount).join("").trim();
+    }
+  }
 
   return next;
 }
