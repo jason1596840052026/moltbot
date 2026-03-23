@@ -1,25 +1,40 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>molbot 聊天頁</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>molbot</h1>
-    <div id="modelInfo" class="model-info">模型：-</div>
-    <div id="chatBox" class="chat-box"></div>
+  <main class="chat-layout">
+    <div class="chat-panel">
+      <div class="topbar">
+        <div>
+          <h1>molbot</h1>
+          <div id="modelInfo">模型：-</div>
+        </div>
+        <div id="statusText">就緒</div>
+      </div>
 
-    <textarea id="messageInput" placeholder="輸入訊息，Enter 送出，Shift+Enter 換行"></textarea>
+      <div id="chatBox"></div>
 
-    <div class="controls">
-      <button id="sendBtn">送出</button>
-      <button id="continueBtn" disabled>續答</button>
-      <button id="clearBtn">清空聊天</button>
+      <form id="chatForm">
+        <div class="form-row">
+          <textarea
+            id="messageInput"
+            placeholder="輸入訊息，Enter 送出，Shift+Enter 換行"
+          ></textarea>
+        </div>
+
+        <div class="actions">
+          <button id="sendBtn" type="submit">送出</button>
+          <button id="continueBtn" type="button" disabled>續答</button>
+          <button id="clearBtn" type="button">清空聊天</button>
+        </div>
+      </form>
     </div>
-  </div>
+  </main>
 
   <script src="./app.js"></script>
 </body>

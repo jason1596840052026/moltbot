@@ -28,6 +28,33 @@ SYSTEM_PROMPT = (
 )
 
 CONTINUE_PROMPT = "請接續上一則回答，從中斷處繼續，不要重複前文。"
+MAX_HISTORY = 10
+
+
+def normalize_text(value):
+    return value.strip() if isinstance(value, str) else ""
+
+
+def clean_history_items(history):
+    if not isinstance(history, list):
+        return []
+
+    clean_history = []
+
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+
+        role = normalize_text(item.get("role"))
+        content = normalize_text(item.get("content"))
+
+        if role in ["user", "assistant"] and content:
+            clean_history.append({
+                "role": role,
+                "content": content
+            })
+
+    return clean_history[-MAX_HISTORY:]
 
 
 @app.route("/")
@@ -43,36 +70,30 @@ def health():
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        data = request.get_json() or {}
-        message = (data.get("message") or "").strip()
-        history = data.get("history", [])
+        data = request.get_json(silent=True) or {}
 
-        if not message:
+        message = normalize_text(data.get("message"))
+        history = data.get("history", [])
+        is_continue_request = data.get("continue") is True
+
+        if not message and not is_continue_request:
             return jsonify({
-                "error": True,
-                "error_type": "bad_request",
-                "message": "message is required"
+                "error": "message is required",
+                "error_type": "bad_request"
             }), 400
 
-        clean_history = []
-        for item in history:
-            if not isinstance(item, dict):
-                continue
+        clean_history = clean_history_items(history)
 
-            role = item.get("role")
-            content = (item.get("content") or "").strip()
-
-            if role in ["user", "assistant"] and content:
-                clean_history.append({
-                    "role": role,
-                    "content": content
-                })
-
-        clean_history = clean_history[-10:]
-
-        is_continue_request = message == CONTINUE_PROMPT
         if is_continue_request:
-            message = "請接續你上一則尚未完成的回答，從中斷處繼續，避免重複前面已經說過的內容。"
+            message = (
+                "請接續你上一則尚未完成的回答，從中斷處繼續，"
+                "直接延續內容，避免重複前面已經說過的內容。"
+            )
+        elif message == CONTINUE_PROMPT:
+            message = (
+                "請接續你上一則尚未完成的回答，從中斷處繼續，"
+                "直接延續內容，避免重複前面已經說過的內容。"
+            )
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         messages.extend(clean_history)
@@ -91,18 +112,33 @@ def chat():
             "max_tokens": 800,
         }
 
-        response = requests.post(NVIDIA_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(
+            NVIDIA_URL,
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
 
         if response.status_code != 200:
             return jsonify({
-                "error": True,
+                "error": "Model request failed",
                 "error_type": "upstream_api_error",
-                "message": "Model request failed",
                 "details": response.text
             }), response.status_code
 
         result = response.json()
-        reply = result["choices"][0]["message"]["content"].strip()
+        reply = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+
+        if not reply:
+            return jsonify({
+                "error": "Model returned empty reply",
+                "error_type": "empty_reply"
+            }), 502
 
         return jsonify({
             "reply": reply,
@@ -112,16 +148,21 @@ def chat():
 
     except requests.exceptions.Timeout:
         return jsonify({
-            "error": True,
-            "error_type": "timeout",
-            "message": "Model request timed out"
+            "error": "Model request timed out",
+            "error_type": "timeout"
         }), 504
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "error": "Failed to reach upstream model service",
+            "error_type": "network_error",
+            "details": str(e)
+        }), 502
 
     except Exception as e:
         return jsonify({
-            "error": True,
-            "error_type": "internal_error",
-            "message": str(e)
+            "error": str(e),
+            "error_type": "internal_error"
         }), 500
 
 

@@ -1,6 +1,9 @@
 const API_BASE_URL = "https://moltbot-ckvn.onrender.com";
+// const API_BASE_URL = "http://127.0.0.1:5000";
 const STORAGE_KEY = "molbot_messages_v1";
 const MAX_HISTORY = 10;
+
+const CONTINUE_PROMPT = "請接續上一則回答，從中斷處繼續，不要重複前文。";
 
 const elements = {
   chatForm: document.getElementById("chatForm"),
@@ -19,7 +22,25 @@ const state = {
   canContinue: false,
   lastUserMessage: "",
   lastAssistantMessage: "",
+  pendingStatusEl: null,
 };
+
+function normalizeText(value) {
+  return typeof value === "string" ? value.replace(/\r\n/g, "\n").trim() : "";
+}
+
+function cleanMessages(messages) {
+  if (!Array.isArray(messages)) return [];
+
+  return messages
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      role: typeof item.role === "string" ? item.role.trim() : "",
+      content: normalizeText(item.content),
+    }))
+    .filter((item) => ["user", "assistant", "system"].includes(item.role) && item.content)
+    .slice(-MAX_HISTORY);
+}
 
 function setStatus(text) {
   if (elements.statusText) {
@@ -27,27 +48,48 @@ function setStatus(text) {
   }
 }
 
+function renderTransientError(message) {
+  if (!elements.messages) return;
+
+  const el = document.createElement("div");
+  el.className = "message assistant";
+  el.innerHTML = `
+    <div class="message-role">系統</div>
+    <div class="message-content">${escapeHtml(`錯誤：${message}`)}</div>
+  `;
+
+  elements.messages.appendChild(el);
+  elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
 function saveMessages() {
+  state.messages = cleanMessages(state.messages);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.messages));
 }
 
 function loadMessages() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
+    if (!raw) {
+      state.messages = [];
+      return;
+    }
 
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return;
+    state.messages = cleanMessages(parsed);
 
-    state.messages = parsed;
-    const lastUser = [...state.messages].reverse().find(msg => msg.role === "user");
-    const lastAssistant = [...state.messages].reverse().find(msg => msg.role === "assistant");
+    const lastUser = [...state.messages].reverse().find((msg) => msg.role === "user");
+    const lastAssistant = [...state.messages].reverse().find((msg) => msg.role === "assistant");
 
     state.lastUserMessage = lastUser?.content || "";
     state.lastAssistantMessage = lastAssistant?.content || "";
     state.canContinue = !!state.lastAssistantMessage;
   } catch (error) {
     console.error("loadMessages error:", error);
+    state.messages = [];
+    state.lastUserMessage = "";
+    state.lastAssistantMessage = "";
+    state.canContinue = false;
   }
 }
 
@@ -61,9 +103,10 @@ function renderMessages() {
   if (!elements.messages) return;
 
   elements.messages.innerHTML = state.messages
-    .map(msg => {
+    .map((msg) => {
       const roleClass = msg.role === "user" ? "user" : "assistant";
       const roleLabel = msg.role === "user" ? "你" : "Molbot";
+
       return `
         <div class="message ${roleClass}">
           <div class="message-role">${roleLabel}</div>
@@ -72,6 +115,10 @@ function renderMessages() {
       `;
     })
     .join("");
+
+  if (state.pendingStatusEl) {
+    elements.messages.appendChild(state.pendingStatusEl);
+  }
 
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
@@ -100,43 +147,102 @@ function syncUiState() {
 }
 
 function getRecentHistory() {
-  return state.messages.slice(-MAX_HISTORY);
+  return cleanMessages(state.messages);
 }
 
 function appendMessage(role, content) {
-  state.messages.push({ role, content });
-  saveMessages();
-  renderMessages();
+  const text = normalizeText(content);
+  if (!text) return;
+
+  state.messages.push({ role, content: text });
+  state.messages = cleanMessages(state.messages);
 
   if (role === "user") {
-    state.lastUserMessage = content;
+    state.lastUserMessage = text;
   }
 
   if (role === "assistant") {
-    state.lastAssistantMessage = content;
-    state.canContinue = !!content;
+    state.lastAssistantMessage = text;
+    state.canContinue = true;
   }
+
+  saveMessages();
+  renderMessages();
+  syncUiState();
 }
 
 function replaceLastAssistantMessage(content) {
+  const text = normalizeText(content);
+  if (!text) return;
+
   for (let i = state.messages.length - 1; i >= 0; i--) {
     if (state.messages[i].role === "assistant") {
-      state.messages[i].content = content;
-      state.lastAssistantMessage = content;
-      state.canContinue = !!content;
+      state.messages[i].content = text;
+      state.lastAssistantMessage = text;
+      state.canContinue = true;
       saveMessages();
       renderMessages();
+      syncUiState();
       return;
     }
   }
 
-  appendMessage("assistant", content);
+  appendMessage("assistant", text);
 }
 
-async function sendChatRequest(message) {
+function showPendingStatus(text = "思考中...") {
+  removePendingStatus();
+
+  const el = document.createElement("div");
+  el.className = "message assistant pending-message";
+  el.dataset.pending = "true";
+  el.innerHTML = `
+    <div class="message-role">Molbot</div>
+    <div class="message-content">${escapeHtml(text)}</div>
+  `;
+
+  state.pendingStatusEl = el;
+
+  if (elements.messages) {
+    elements.messages.appendChild(el);
+    elements.messages.scrollTop = elements.messages.scrollHeight;
+  }
+}
+
+function removePendingStatus() {
+  if (state.pendingStatusEl && state.pendingStatusEl.parentNode) {
+    state.pendingStatusEl.parentNode.removeChild(state.pendingStatusEl);
+  }
+  state.pendingStatusEl = null;
+}
+
+function removeOverlap(previousText, newText) {
+  const prev = normalizeText(previousText);
+  const next = normalizeText(newText);
+
+  if (!prev || !next) return next;
+
+  const maxCheck = Math.min(prev.length, next.length, 200);
+
+  for (let len = maxCheck; len >= 20; len--) {
+    const prevTail = prev.slice(-len);
+    const nextHead = next.slice(0, len);
+    if (prevTail === nextHead) {
+      return next.slice(len).trim();
+    }
+  }
+
+  if (next === prev) return "";
+  if (next.startsWith(prev)) return next.slice(prev.length).trim();
+
+  return next;
+}
+
+async function sendChatRequest(message, isContinue = false) {
   const payload = {
-    message,
+    message: normalizeText(message),
     history: getRecentHistory(),
+    continue: isContinue,
   };
 
   const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -147,46 +253,61 @@ async function sendChatRequest(message) {
     body: JSON.stringify(payload),
   });
 
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    let errorMessage = "無法連線到伺服器，請確認後端是否啟動或稍後再試。";
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.error || errorMessage;
-    } catch (_) {}
+    const errorMessage =
+      data.message ||
+      data.error ||
+      "無法連線到伺服器，請確認後端是否啟動或稍後再試。";
     throw new Error(errorMessage);
   }
 
-  const data = await response.json();
   return data;
 }
 
 async function sendMessage() {
   if (state.isSending) return;
 
-  const userText = elements.messageInput?.value.trim();
+  const userText = normalizeText(elements.messageInput?.value);
   if (!userText) return;
 
   state.isSending = true;
   syncUiState();
   setStatus("發送中...");
 
-  appendMessage("user", userText);
+  removePendingStatus();
+
   elements.messageInput.value = "";
+
+  appendMessage("user", userText);
   syncUiState();
 
+  showPendingStatus("思考中...");
+
   try {
-    const data = await sendChatRequest(userText);
-    const reply = data.reply || "【資料不足，無法確認】";
+    const data = await sendChatRequest(userText, false);
+    const reply = normalizeText(data.reply || "【資料不足，無法確認】");
+
+    removePendingStatus();
+
+    if (!reply) {
+      throw new Error("模型未回傳內容");
+    }
+
     appendMessage("assistant", reply);
 
     if (elements.modelName && data.model) {
       elements.modelName.textContent = data.model;
     }
 
+    state.canContinue = !!data.can_continue;
     setStatus("完成");
   } catch (error) {
     console.error("sendMessage error:", error);
-    appendMessage("assistant", `錯誤：${error.message}`);
+    removePendingStatus();
+    renderTransientError(error.message);
+    state.canContinue = !!state.lastAssistantMessage;
     setStatus("發送失敗");
   } finally {
     state.isSending = false;
@@ -203,24 +324,41 @@ async function continueReply() {
   syncUiState();
   setStatus("續答中...");
 
-  try {
-    const continuePrompt = "請延續你上一則回覆，直接從中斷處接續，避免重複前文。";
-    const data = await sendChatRequest(continuePrompt);
-    const newReply = data.reply || "";
+  removePendingStatus();
+  showPendingStatus("續答中...");
 
-    if (newReply) {
-      const mergedReply = `${state.lastAssistantMessage}\n${newReply}`;
-      replaceLastAssistantMessage(mergedReply);
+  try {
+    const previousAssistant = state.lastAssistantMessage;
+    const data = await sendChatRequest(CONTINUE_PROMPT, true);
+    const rawReply = normalizeText(data.reply || "");
+
+    removePendingStatus();
+
+    if (!rawReply) {
+      throw new Error("模型未回傳續答內容");
     }
+
+    const dedupedReply = removeOverlap(previousAssistant, rawReply);
+
+    if (!dedupedReply) {
+      setStatus("續答完成，但未追加新內容");
+      return;
+    }
+
+    const mergedReply = `${previousAssistant}\n${dedupedReply}`.trim();
+    replaceLastAssistantMessage(mergedReply);
 
     if (elements.modelName && data.model) {
       elements.modelName.textContent = data.model;
     }
 
+    state.canContinue = !!data.can_continue;
     setStatus("續答完成");
   } catch (error) {
     console.error("continueReply error:", error);
-    appendMessage("assistant", `錯誤：${error.message}`);
+    removePendingStatus();
+    renderTransientError(error.message);
+    state.canContinue = !!state.lastAssistantMessage;
     setStatus("續答失敗");
   } finally {
     state.isSending = false;
@@ -236,6 +374,7 @@ function clearChat() {
   state.lastUserMessage = "";
   state.lastAssistantMessage = "";
 
+  removePendingStatus();
   localStorage.removeItem(STORAGE_KEY);
   renderMessages();
   setStatus("已清空聊天");
