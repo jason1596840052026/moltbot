@@ -129,15 +129,15 @@ async function sendMessage(message, options = { showUserBubble: true }) {
             return;
         }
 
-        if (!response.ok || data.error) {
-            if (data.error_type === "timeout") {
+        if (!response.ok || data?.error) {
+            if (data?.error_type === "timeout") {
                 appendErrorMessage("模型回應逾時，請稍後再試。");
-            } else if (data.error_type === "upstream_api_error") {
+            } else if (data?.error_type === "upstream_api_error") {
                 appendErrorMessage("模型暫時無法回覆，請稍後再試。");
-            } else if (data.error_type === "bad_request") {
+            } else if (data?.error_type === "bad_request") {
                 appendErrorMessage("請求內容有誤，請重新輸入。");
             } else {
-                appendErrorMessage("伺服器回應失敗，請稍後再試。");
+                appendErrorMessage(data?.message || "伺服器回應失敗，請稍後再試。");
             }
             return;
         }
