@@ -499,7 +499,19 @@ function bindEvents() {
     elements.messageInput.addEventListener("input", syncUiState);
 
     elements.messageInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (event.isComposing) return;
+      if (event.key !== "Enter") return;
+
+      const isTouchDevice =
+        window.matchMedia("(pointer: coarse)").matches ||
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0;
+
+      if (isTouchDevice) {
+        return;
+      }
+
+      if (!event.shiftKey) {
         event.preventDefault();
         sendMessage();
       }
