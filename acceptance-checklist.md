@@ -9,6 +9,8 @@
 - Vercel 前端
 - 正式站前後端串接
 - Vercel Git 自動部署
+- 手機版輸入與介面穩定性
+- Render 雲端 Qwen 模型切換
 
 皆已達到可用狀態，並完成正式站驗收。
 
@@ -21,8 +23,9 @@
 - 前端：HTML / CSS / JavaScript
 - 模型來源：NVIDIA API
 - 前端正式站：`https://molbot-frontend.vercel.app`
+- 後端正式站：`https://moltbot-ckvn.onrender.com`
 - 驗收版本：V1.5 第二輪
-- 正式站驗證日期：2026-03-23
+- 正式站驗證日期：2026-03-30
 
 ---
 
@@ -43,6 +46,7 @@
 ### A-4 CORS 設定正常
 - [x] 已加入 CORS
 - [x] 已放行 Vercel 前端網址
+- [x] 已放行本地 Live Server 5500 / 5502
 
 ---
 
@@ -95,6 +99,7 @@
 - [x] 已降低續答時重複前文問題
 - [x] user / assistant / system 訊息流程已重整
 - [x] 錯誤訊息不寫入正式歷史紀錄
+- [x] 續答目前追加在同一則 assistant 訊息中，功能可用
 
 ---
 
@@ -119,6 +124,7 @@
 - [x] 成功 / 失敗後正確恢復按鈕狀態：通過
 - [x] 續答去重基本可用：通過
 - [x] 正式站問答測試正常：通過
+- [x] 左上角模型名稱顯示正常：通過
 
 ---
 
@@ -150,21 +156,58 @@
 - [x] 上下文可用
 - [x] 發送中狀態控制可用
 
+### F-3 本地模型切換
+- [x] 本地主模型已切換為 `qwen/qwen3.5-122b-a10b`
+- [x] 本地前端左上角模型名稱可隨 `/chat` 回傳正確更新
+
 ---
 
-## G. 文件與版本控制
+## G. 手機版驗收
 
-### G-1 文件同步
+### G-1 輸入行為
+- [x] 手機按下換行不會直接送出
+- [x] 手機可正常輸入多行文字
+
+### G-2 介面穩定性
+- [x] 手機鍵盤彈出時介面仍可正常操作
+- [x] 手機版畫面未出現主要操作阻塞問題
+
+---
+
+## H. Render 雲端模型驗收
+
+### H-1 Render 環境變數
+- [x] 已於 Render 設定 `NVIDIA_MODEL=qwen/qwen3.5-122b-a10b`
+- [x] 已完成 `Save, rebuild, and deploy`
+
+### H-2 雲端 `/chat` 驗證
+- [x] 直接呼叫 `https://moltbot-ckvn.onrender.com/chat` 成功
+- [x] 回傳 JSON 含 `model: qwen/qwen3.5-122b-a10b`
+- [x] 回傳 JSON 含 `can_continue: true`
+- [x] 回傳內容正常
+
+### H-3 正式站同步驗證
+- [x] 正式站左上角模型名稱顯示 `qwen/qwen3.5-122b-a10b`
+- [x] 正式站送出測試正常
+- [x] 正式站續答測試正常
+- [x] 可判定雲端實際呼叫模型已切換為 Qwen
+
+---
+
+## I. 文件與版本控制
+
+### I-1 文件同步
 - [x] README 已完成 V1.5 第二輪狀態同步
 - [x] acceptance-checklist 已完成第二輪正式站驗收結果同步
+- [x] 已補上雲端 Qwen 模型切換驗收結果
 
-### G-2 Git 與部署
+### I-2 Git 與部署
 - [x] frontend 已納入 Git 版本控制
 - [x] 最新前端修正已 commit 並 push
 - [x] 已完成 Vercel 手動重新部署
 - [x] 正式站已與本地一致
 
-### G-3 Vercel Git 自動部署
+### I-3 Vercel Git 自動部署
 - [x] 已完成 Vercel Connect Git Repository
 - [x] repo：`jason1596840052026/moltbot`
 - [x] Production Branch：`main`
@@ -182,10 +225,13 @@
 - [x] 本地驗收完成
 - [x] 正式站驗收完成
 - [x] Vercel Git 自動部署驗證完成
+- [x] 手機版輸入穩定性驗證完成
+- [x] Render 雲端 Qwen 模型切換完成
 - [x] 可進入下一階段穩定性優化與細修
 
 ### 下一階段方向
 - [ ] 續答去重再細修
+- [ ] Markdown 顯示策略整理
 - [ ] UI / UX 小幅改善
 - [ ] assistant / user 顯示標籤穩定化
 - [ ] 文件持續同步
@@ -196,4 +242,4 @@
 ## 備註
 
 目前 molbot 已達到穩定可用的最小 Web 聊天助理狀態。  
-下一輪應以穩定性、續答品質、介面細修與文件一致性為優先，暫不優先擴充 Discord / Telegram。
+下一輪應以穩定性、續答品質、Markdown 顯示策略、介面細修與文件一致性為優先，暫不優先擴充 Discord / Telegram。
