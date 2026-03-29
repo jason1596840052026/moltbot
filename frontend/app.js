@@ -1,5 +1,6 @@
-const API_BASE_URL = "https://moltbot-ckvn.onrender.com";
-// const API_BASE_URL = "http://127.0.0.1:5000";
+// console.log("app.js loaded - qwen test");
+// const API_BASE_URL = "https://moltbot-ckvn.onrender.com";
+const API_BASE_URL = "http://127.0.0.1:5000";
 const STORAGE_KEY = "molbot_messages_v1";
 const MAX_HISTORY = 10;
 
@@ -383,7 +384,11 @@ async function sendMessage() {
     appendMessage("assistant", reply);
 
     if (elements.modelName && data.model) {
+      // console.log("model element id:", elements.modelName.id);
+      // console.log("before update:", elements.modelName.textContent);
+      // console.log("new model from API:", data.model);
       elements.modelName.textContent = data.model;
+      // console.log("after update:", elements.modelName.textContent);
     }
 
     state.canContinue = !!data.can_continue;
@@ -434,7 +439,11 @@ async function continueReply() {
     replaceLastAssistantMessage(mergedReply);
 
     if (elements.modelName && data.model) {
+      console.log("model element id:", elements.modelName.id);
+      console.log("before update:", elements.modelName.textContent);
+      console.log("new model from API:", data.model);
       elements.modelName.textContent = data.model;
+      console.log("after update:", elements.modelName.textContent);
     }
 
     state.canContinue = !!data.can_continue;
