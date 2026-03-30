@@ -1,113 +1,93 @@
 ﻿# molbot
 
-molbot 是一個以 **Flask + NVIDIA API** 為核心的個人助理 Web 專案。  
-目前已完成 **V1.5 第二輪收尾**，並完成：
+molbot 是一個以 **Flask + Vercel Frontend + NVIDIA API** 為核心的個人助理專案。  
+目前已完成：
 
-- 本地驗收
-- Render 後端驗收
-- Vercel 前端驗收
-- 正式站最小驗收
-- 雲端模型切換為 `qwen/qwen3.5-122b-a10b`
+- Web 聊天前後端串接
+- Render 雲端部署
+- Vercel 前端部署
+- Qwen 模型切換
+- Telegram webhook v1 串接
+
+目前專案狀態可視為：
+
+**molbot V1.5 Stable**
 
 ---
 
 ## 專案目標
 
-建立一個可部署在雲端、可由前端網頁直接互動的 AI 聊天助理，具備：
+建立一個可在：
 
-- 基本聊天能力
-- 可承接最近上下文
-- 最小可用續答功能
-- 前端本地對話保存
-- 基本錯誤提示與操作體驗
-- 穩定的前端送出 / 續答狀態管理
-- 手機版輸入與介面穩定性
-- 雲端模型可明確透過環境變數切換
+- 本地環境
+- Render 雲端後端
+- Vercel 正式前端
+- Telegram Bot
+
+上穩定使用的中文 AI 助理。
 
 ---
 
 ## 目前版本狀態
 
-**目前版本：V1.5 第二輪**  
-**狀態：本地與正式站驗收完成，雲端 Qwen 切換完成**
+### 版本
+- `V1.5 Stable`
 
-### 已完成能力
+### 目前主模型
+- `qwen/qwen3.5-122b-a10b`
 
-- Flask 後端已完成
-- Render 後端部署完成
-- `/`、`/health`、`/chat` 路由可正常使用
-- 已成功串接 NVIDIA API
-- 已加入 CORS，並放行：
-  - `http://127.0.0.1:5500`
-  - `http://127.0.0.1:5502`
-  - `http://localhost:5500`
-  - `http://localhost:5502`
-  - `https://molbot-frontend.vercel.app`
-- 前端已完成並部署到 Vercel
-- 前後端正式串通成功
-- 可正常發送訊息並顯示 AI 回覆
-- 可顯示模型名稱
-- 已完成基本上下文功能
-- 已完成最小可用續答功能
-- 已完成 history 清洗，限制最近 10 筆
-- 已完成 localStorage 對話保存
-- 已完成清空聊天功能
-- 已完成前後端錯誤提示優化
-- 已完成 `frontend/index.html`、`frontend/style.css` 結構整理
-- 已完成前端訊息狀態管理整理
-- 已完成發送中禁止重複送出
-- 已完成發送中禁止重複續答
-- 已完成成功 / 失敗後按鈕狀態正確恢復
-- 已完成續答流程重整，降低重複前文問題
-- 已完成 pending 狀態訊息機制
-- 已完成錯誤訊息不寫入正式歷史紀錄
-- 已完成手機版輸入優化
-- 已完成手機換行不直接送出
-- 已完成手機鍵盤彈出時介面穩定性調整
-- 已完成本地主模型切換為 `qwen/qwen3.5-122b-a10b`
-- 已完成 Render 雲端 `NVIDIA_MODEL` 設定為 `qwen/qwen3.5-122b-a10b`
-- 已驗證 Render `/chat` 實際回傳 `model: qwen/qwen3.5-122b-a10b`
+### 目前已完成
+- Flask 後端 API 可正常運作
+- NVIDIA API 串接成功
+- Render 後端部署成功
+- Vercel 前端部署成功
+- Web 正式站前後端串接成功
+- 模型名稱顯示正常
+- 基本上下文可用
+- 續答功能可用
+- localStorage 對話保存可用
+- 清空聊天可用
+- 發送中禁止重複送出 / 續答可用
+- 手機輸入換行正常
+- 手機鍵盤彈出時介面可正常操作
+- AI 回覆的粗體 / 清單 / 段落顯示已改善
+- Telegram Bot 已建立
+- Telegram webhook v1 已打通
+- Telegram 私訊 bot 可正常回覆
+- `/start`、一般提問可正常回覆
 
 ---
 
-## 正式站網址
-
-### 前端
-- `https://molbot-frontend.vercel.app`
+## 技術架構
 
 ### 後端
-- `https://moltbot-ckvn.onrender.com`
+- Python
+- Flask
+- requests
+- python-dotenv
+- flask-cors
 
----
+### 前端
+- HTML
+- CSS
+- JavaScript
 
-## 部署狀態
+### 模型來源
+- NVIDIA API
 
-### 後端部署
-- 平台：Render
-- 主程式：`app.py`
-- 雲端模型設定：`NVIDIA_MODEL=qwen/qwen3.5-122b-a10b`
+### 部署
+- Backend：Render
+- Frontend：Vercel
 
-### 前端部署
-- 平台：Vercel
-- Git Repository：`jason1596840052026/moltbot`
-- Production Branch：`main`
-- Root Directory：`frontend`
-- Framework Preset：`Other`
-
-### 自動部署狀態
-- frontend 已納入 Git 版本控制
-- Vercel 已完成 Connect Git Repository
-- push 到 GitHub `main` 後可自動觸發 deployment
-- Root Directory 修正後，正式站不再出現 404
-- 正式站已確認與本地版本一致
-- 正式站模型名稱已可隨 `/chat` 回傳同步顯示
+### Bot 平台
+- Telegram webhook v1
 
 ---
 
 ## 專案結構
 
 ```text
-C:\mo\molbot
+molbot/
 ├─ app.py
 ├─ requirements.txt
 ├─ README.md
@@ -136,81 +116,177 @@ MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
 qwen/qwen3.5-122b-a10b
 ```
 
-當 `/chat` 被呼叫時，後端會將 `MODEL` 寫入 NVIDIA API payload，  
-因此這不是單純前端顯示文字，而是實際呼叫的模型設定。
+當 `/chat` 被呼叫時，後端會將 `MODEL` 寫入 NVIDIA API payload，
+因此不是單純前端顯示文字，而是實際呼叫模型設定。
 
 ---
 
 ## 已確認可用功能
 
+### Web / 後端
 - 本地 Flask 後端可正常回應
-- 本地前端可正常呼叫本地 `/chat`
+- `GET /` 可正常回應
+- `GET /health` 可正常回應
+- `POST /chat` 可正常回應
 - Render 後端 API 可正常回應
 - Vercel 前端可正常呼叫 Render `/chat`
-- 前後端正式串通成功
-- 可顯示模型名稱
+- 正式站前後端串接正常
+- 左上角模型名稱顯示正常
 - 基本上下文可用
 - 續答功能可用
-- 續答目前會將補完內容追加在同一則 assistant 訊息中，功能可用
 - localStorage 對話保存可用
 - 清空聊天可用
 - 發送中禁止重複送出可用
 - 發送中禁止重複續答可用
-- 成功 / 失敗後按鈕狀態可正常恢復
-- Offline 測試時前端會顯示錯誤
-- 恢復網路並重整後，錯誤訊息不留在歷史紀錄中
-- 正式站版型已與本地一致
-- Vercel 前端已可隨 git push 自動部署
+
+### 顯示與互動
+- AI 回覆粗體顯示可用
+- 編號清單顯示可用
+- 項目清單顯示可用
+- 基本段落與換行顯示可用
 - 手機輸入可正常換行，不會直接送出
 - 手機鍵盤彈出時介面仍可正常操作
-- 本地主模型顯示與實際 API 模型一致
-- Render `/chat` 已驗證回傳：
-  - `model: qwen/qwen3.5-122b-a10b`
-  - `can_continue: true`
+
+### Telegram
+- Telegram Bot 已建立
+- Webhook 已成功設定到 Render
+- `getWebhookInfo` 驗證成功
+- 直接 `sendMessage` 測試成功
+- 手動 POST webhook 路由測試成功
+- 真實 Telegram 私訊流程可用
+- `/start` 可正常回覆
+- 一般提問可正常回覆
+- `/reset`、`/continue` 已有基礎支援
+
+---
+
+## Telegram 目前實作方式
+
+目前 Telegram 採用：
+
+- Webhook 架構
+- Render 公開 HTTPS 網址作為 webhook endpoint
+- Telegram 訊息轉送到 Flask 路由處理
+- Bot 回覆再透過 Telegram Bot API 發送
+
+### 目前 Telegram 使用的環境變數
+
+```
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_ALLOWED_CHAT_ID=
+```
+
+---
+
+## 部署資訊
+
+### 前端正式站
+```
+https://molbot-frontend.vercel.app
+```
+
+### 後端正式站
+```
+https://moltbot-ckvn.onrender.com
+```
+
+### Render 環境變數（目前至少包含）
+```
+NVIDIA_API_KEY=
+NVIDIA_MODEL=qwen/qwen3.5-122b-a10b
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_ALLOWED_CHAT_ID=
+```
+
+---
+
+## 本地啟動方式
+
+**1. 進入專案目錄**
+```powershell
+cd molbot
+```
+
+**2. 啟動虛擬環境**
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+**3. 安裝套件**
+```powershell
+pip install -r requirements.txt
+```
+
+**4. 啟動後端**
+```powershell
+python app.py
+```
+
+**5. 開啟前端**
+
+可直接使用 Live Server 或開啟：
+
+```
+frontend/index.html
+```
+
+---
+
+## 本地 / 正式站 API 切換
+
+目前前端 `frontend/app.js` 已支援：
+
+- `localhost / 127.0.0.1` 自動打本機 Flask
+- 其他情況自動打 Render 正式站
+
+因此平常不需要每次手動改 `API_BASE_URL`。
+
+---
+
+## 已知限制
+
+- 續答判定仍非完美，但現階段可接受
+- Telegram 上下文目前先存在記憶體
+- Render 重啟後，Telegram 暫存上下文會消失
+- Render Free 閒置時會冷啟動，第一次請求可能較慢
+- Telegram 第一版目前以純文字為主
+- Discord 尚未開始正式串接
 
 ---
 
 ## 驗收結論
 
-molbot V1.5 第二輪已完成，且已通過：
+目前 molbot 已完成：
 
-- 本地驗收
-- Render 後端驗收
-- Vercel 前端驗收
-- 正式站前後端串接驗收
-- Vercel Git 自動部署驗證
-- 手機版輸入穩定性驗證
-- 雲端 Qwen 模型切換驗證
+- V1.5 Web 穩定版
+- Qwen 雲端切換
+- 正式站驗收
+- Telegram webhook v1 串接
 
-目前專案已達到穩定的最小可用 Web 聊天助理狀態。
+可視為：
+
+**一版可保存、可交接、可繼續擴充的穩定版本。**
 
 ---
 
-## 下一步建議方向
+## 下一步規劃
 
-下一輪優先方向建議為：
-
-- 續答去重再細修，降低少量重複內容
-- Markdown 顯示策略調整
-  - 要嘛前端支援 Markdown render
-  - 要嘛限制模型回覆純文字格式
-- UI 微調（訊息泡泡高度、排版、按鈕視覺）
-- assistant / user 顯示標籤穩定化
-- 文件持續同步與驗收項目補強
-- 規劃 V1.5 後續優化項目
+- 文件同步與版本整理
+- Discord 第一版串接
+- 平台訊息入口共用邏輯整理
+- 視需要補平台權限、白名單與多平台 session 策略
 
 ---
 
 ## 備註
 
-目前 V1.5 第二輪已完成部署收斂、正式站同步與雲端模型切換。  
-後續前端更新流程：
+如果 Render Free 因閒置進入休眠，第一次請求可能會比較慢。
+需要時可先打：
 
-```bash
-git add .
-git commit -m "your message"
-git push origin main
+```
+https://moltbot-ckvn.onrender.com/health
 ```
 
-後續若有修改 Render 環境變數，需重新部署服務，  
-讓後端重新讀取新的 `NVIDIA_MODEL`。
+讓服務先喚醒。

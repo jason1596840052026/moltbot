@@ -1,6 +1,8 @@
-// console.log("app.js loaded - qwen test");
-// const API_BASE_URL = "https://moltbot-ckvn.onrender.com";
-const API_BASE_URL = "http://127.0.0.1:5000";
+const API_BASE_URL =
+  location.hostname === "127.0.0.1" || location.hostname === "localhost"
+    ? "http://127.0.0.1:5000"
+    : "https://moltbot-ckvn.onrender.com";
+
 const STORAGE_KEY = "molbot_messages_v1";
 const MAX_HISTORY = 10;
 
@@ -117,6 +119,69 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function formatInlineMarkdown(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
+function renderMessageContent(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return "";
+
+  const lines = escapeHtml(normalized).split("\n");
+  const html = [];
+  let inUl = false;
+  let inOl = false;
+
+  const closeLists = () => {
+    if (inUl) {
+      html.push("</ul>");
+      inUl = false;
+    }
+    if (inOl) {
+      html.push("</ol>");
+      inOl = false;
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      closeLists();
+      html.push("<br>");
+      continue;
+    }
+
+    const bulletMatch = line.match(/^(?:[-*•])\s+(.+)$/);
+    if (bulletMatch) {
+      if (!inUl) {
+        closeLists();
+        html.push('<ul class="message-list">');
+        inUl = true;
+      }
+      html.push(`<li>${formatInlineMarkdown(bulletMatch[1])}</li>`);
+      continue;
+    }
+
+    const numberMatch = line.match(/^(\d+)\.\s+(.+)$/);
+    if (numberMatch) {
+      if (!inOl) {
+        closeLists();
+        html.push('<ol class="message-list">');
+        inOl = true;
+      }
+      html.push(`<li value="${numberMatch[1]}">${formatInlineMarkdown(numberMatch[2])}</li>`);
+      continue;
+    }
+
+    closeLists();
+    html.push(`<p>${formatInlineMarkdown(line)}</p>`);
+  }
+
+  closeLists();
+  return html.join("");
+}
+
 function getRoleClass(role) {
   return role === "user" ? "user" : "assistant";
 }
@@ -138,8 +203,10 @@ function renderMessages() {
       return `
         <div class="message-row ${roleClass}">
           <div class="message-role">${roleLabel}</div>
-          <div class="message ${roleClass}">
-            <div class="message-content">${escapeHtml(msg.content).replace(/\n/g, "<br>")}</div>
+          <div class="message ${roleClass}"><div class="message-content">${msg.role === "assistant"
+          ? renderMessageContent(msg.content)
+          : escapeHtml(msg.content).replace(/\n/g, "<br>")
+        }</div>
           </div>
         </div>
       `;
@@ -255,69 +322,80 @@ function removeOverlap(previousText, newText) {
   if (!prev || !next) return next;
 
   if (next === prev) return "";
-  if (next.startsWith(prev)) return next.slice(prev.length).trim();
 
   const prevNormalized = normalizeForCompare(prev);
   const nextNormalized = normalizeForCompare(next);
 
-  if (nextNormalized === prevNormalized) return "";
+  if (!prevNormalized || !nextNormalized) return next;
+  if (prevNormalized === nextNormalized) return "";
 
-  const maxCheck = Math.min(prev.length, next.length, 240);
-
-  for (let len = maxCheck; len >= 20; len--) {
-    const prevTail = prev.slice(-len);
-    const nextHead = next.slice(0, len);
-    if (prevTail === nextHead) {
-      return next.slice(len).trim();
-    }
+  if (next.startsWith(prev)) {
+    return next.slice(prev.length).trim();
   }
+
+  const splitIntoLines = (text) =>
+    String(text || "")
+      .split(/\n+/)
+      .map((item) => normalizeText(item))
+      .filter(Boolean);
+
+  const splitIntoSentences = (text) =>
+    String(text || "")
+      .replace(/\n+/g, " ")
+      .match(/[^。！？!?\.]+[。！？!?\.]?/g)
+      ?.map((item) => normalizeText(item))
+      .filter(Boolean) || [];
+
+  const findUnitCutIndex = (prevUnits, nextUnits, maxUnits) => {
+    const prevNormalizedUnits = prevUnits.map(normalizeForCompare).filter(Boolean);
+    const nextNormalizedUnits = nextUnits.map(normalizeForCompare).filter(Boolean);
+
+    const max = Math.min(maxUnits, prevNormalizedUnits.length, nextNormalizedUnits.length);
+
+    for (let size = max; size >= 1; size--) {
+      const prevTail = prevNormalizedUnits.slice(-size);
+      const nextHead = nextNormalizedUnits.slice(0, size);
+
+      const matched = prevTail.every((item, index) => item === nextHead[index]);
+      if (matched) {
+        return size;
+      }
+    }
+
+    return 0;
+  };
 
   const prevParagraphs = splitIntoParagraphs(prev);
   const nextParagraphs = splitIntoParagraphs(next);
 
-  if (prevParagraphs.length > 0 && nextParagraphs.length > 0) {
-    const prevTailParagraphs = prevParagraphs.slice(-2).map(normalizeForCompare);
-    let cutIndex = 0;
-
-    for (let i = 0; i < Math.min(2, nextParagraphs.length); i++) {
-      const candidate = normalizeForCompare(nextParagraphs[i]);
-      if (prevTailParagraphs.includes(candidate)) {
-        cutIndex = i + 1;
-      } else {
-        break;
-      }
-    }
-
-    if (cutIndex > 0) {
-      return nextParagraphs.slice(cutIndex).join("\n").trim();
-    }
+  const paragraphCut = findUnitCutIndex(prevParagraphs, nextParagraphs, 4);
+  if (paragraphCut > 0) {
+    return nextParagraphs.slice(paragraphCut).join("\n\n").trim();
   }
 
-  const prevSentences = prev
-    .split(/(?<=[。！？!?；;\n])/)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const prevLines = splitIntoLines(prev);
+  const nextLines = splitIntoLines(next);
 
-  const nextSentences = next
-    .split(/(?<=[。！？!?；;\n])/)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const lineCut = findUnitCutIndex(prevLines, nextLines, 8);
+  if (lineCut > 0) {
+    return nextLines.slice(lineCut).join("\n").trim();
+  }
 
-  if (prevSentences.length > 0 && nextSentences.length > 0) {
-    const recentPrev = prevSentences.slice(-2).map(normalizeForCompare);
-    let duplicateCount = 0;
+  const prevSentences = splitIntoSentences(prev);
+  const nextSentences = splitIntoSentences(next);
 
-    for (const sentence of nextSentences.slice(0, 2)) {
-      const normalizedSentence = normalizeForCompare(sentence);
-      if (recentPrev.includes(normalizedSentence)) {
-        duplicateCount += 1;
-      } else {
-        break;
-      }
-    }
+  const sentenceCut = findUnitCutIndex(prevSentences, nextSentences, 6);
+  if (sentenceCut > 0) {
+    return nextSentences.slice(sentenceCut).join(" ").trim();
+  }
 
-    if (duplicateCount > 0) {
-      return nextSentences.slice(duplicateCount).join("").trim();
+  const maxCheck = Math.min(prev.length, next.length, 400);
+  for (let len = maxCheck; len >= 12; len--) {
+    const prevTail = normalizeForCompare(prev.slice(-len));
+    const nextHead = normalizeForCompare(next.slice(0, len));
+
+    if (prevTail && nextHead && prevTail === nextHead) {
+      return next.slice(len).trim();
     }
   }
 
@@ -384,11 +462,7 @@ async function sendMessage() {
     appendMessage("assistant", reply);
 
     if (elements.modelName && data.model) {
-      // console.log("model element id:", elements.modelName.id);
-      // console.log("before update:", elements.modelName.textContent);
-      // console.log("new model from API:", data.model);
       elements.modelName.textContent = data.model;
-      // console.log("after update:", elements.modelName.textContent);
     }
 
     state.canContinue = !!data.can_continue;
@@ -439,11 +513,7 @@ async function continueReply() {
     replaceLastAssistantMessage(mergedReply);
 
     if (elements.modelName && data.model) {
-      console.log("model element id:", elements.modelName.id);
-      console.log("before update:", elements.modelName.textContent);
-      console.log("new model from API:", data.model);
       elements.modelName.textContent = data.model;
-      console.log("after update:", elements.modelName.textContent);
     }
 
     state.canContinue = !!data.can_continue;
@@ -451,9 +521,8 @@ async function continueReply() {
   } catch (error) {
     console.error("continueReply error:", error);
     removePendingStatus();
-    renderTransientError(error.message);
     state.canContinue = !!state.lastAssistantMessage;
-    setStatus("續答失敗");
+    setStatus(`續答失敗：${error.message}`);
   } finally {
     state.isSending = false;
     syncUiState();

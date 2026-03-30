@@ -1,4 +1,5 @@
 ﻿import os
+import logging
 import requests
 import threading
 from flask import Flask, request, jsonify
@@ -11,6 +12,10 @@ from nacl.exceptions import BadSignatureError
 load_dotenv()
 
 app = Flask(__name__)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+DEBUG_MODE = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 
 ALLOWED_ORIGINS = [
     "http://127.0.0.1:5500",
@@ -107,10 +112,11 @@ def handle_discord_ask_async(interaction_token, session_key, user_message):
 
         edit_discord_original_response(interaction_token, reply)
 
-    except Exception as e:
+    except Exception:
+        app.logger.exception("Discord ask failed")
         edit_discord_original_response(
             interaction_token,
-            f"Discord ask 發生錯誤：{str(e)}"
+            "系統暫時無法處理這次請求，請稍後再試。"
         )
 
 
@@ -138,10 +144,11 @@ def handle_discord_continue_async(interaction_token, session_key):
 
         edit_discord_original_response(interaction_token, reply)
 
-    except Exception as e:
+    except Exception:
+        app.logger.exception("Discord continue failed")
         edit_discord_original_response(
             interaction_token,
-            f"Discord continue 發生錯誤：{str(e)}"
+            "系統暫時無法接續回覆，請稍後再試。"
         )
 
 def verify_discord_signature(req):
@@ -305,7 +312,11 @@ def request_model_reply(message, history=None, is_continue_request=False):
     )
 
     if response.status_code != 200:
-        raise RuntimeError(f"Model request failed: {response.text}")
+        app.logger.error(
+            "Model request failed: status=%s",
+            response.status_code,
+        )
+        raise RuntimeError("upstream_model_error")
 
     result = response.json()
     reply = (
@@ -538,21 +549,37 @@ def chat():
         })
 
     except requests.exceptions.Timeout:
+        app.logger.exception("Model request timed out")
         return jsonify({
-            "error": "Model request timed out",
+            "error": "模型回應逾時，請稍後再試。",
             "error_type": "timeout"
         }), 504
-
-    except requests.exceptions.RequestException as e:
+        
+    except requests.exceptions.RequestException:
+        app.logger.exception("Failed to reach upstream model service")
         return jsonify({
-            "error": "Failed to reach upstream model service",
-            "error_type": "network_error",
-            "details": str(e)
+            "error": "目前無法連線到模型服務，請稍後再試。",
+            "error_type": "network_error"
         }), 502
 
-    except Exception as e:
+    except RuntimeError as e:
+        if str(e) == "upstream_model_error":
+            app.logger.exception("Upstream model returned non-200 response")
+            return jsonify({
+                "error": "目前模型服務暫時不可用，請稍後再試。",
+                "error_type": "upstream_error"
+            }), 502
+
+        app.logger.exception("Runtime error in /chat")
         return jsonify({
-            "error": str(e),
+            "error": "系統發生錯誤，請稍後再試。",
+            "error_type": "internal_error"
+        }), 500
+
+    except Exception:
+        app.logger.exception("Unexpected error in /chat")
+        return jsonify({
+            "error": "系統發生錯誤，請稍後再試。",
             "error_type": "internal_error"
         }), 500
 
@@ -587,13 +614,14 @@ def telegram_webhook(secret):
 
         return jsonify({"ok": True})
 
-    except Exception as e:
+    except Exception:
+        app.logger.exception("Telegram webhook failed")
         return jsonify({
             "ok": False,
-            "error": str(e)
+            "error": "internal_error"
         }), 500
 
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE)
