@@ -3,6 +3,8 @@ import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from flask_cors import CORS
+from nacl.signing import VerifyKey
+from nacl.exceptions import BadSignatureError
 
 load_dotenv()
 
@@ -25,6 +27,11 @@ NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID", "").strip()
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+DISCORD_APPLICATION_ID = os.getenv("DISCORD_APPLICATION_ID", "")
+DISCORD_PUBLIC_KEY = os.getenv("DISCORD_PUBLIC_KEY", "")
+DISCORD_ALLOWED_GUILD_ID = os.getenv("DISCORD_ALLOWED_GUILD_ID", "")
+DISCORD_ALLOWED_CHANNEL_ID = os.getenv("DISCORD_ALLOWED_CHANNEL_ID", "")
 
 SYSTEM_PROMPT = (
     "你是 molbot，一個以繁體中文回覆的 AI 助理。"
@@ -40,6 +47,26 @@ MAX_HISTORY = 10
 # 注意：Render 重啟後會消失，這一版先求最小可用
 TELEGRAM_CHAT_SESSIONS = {}
 
+def verify_discord_signature(req):
+    if not DISCORD_PUBLIC_KEY:
+        return False
+
+    signature = req.headers.get("X-Signature-Ed25519", "")
+    timestamp = req.headers.get("X-Signature-Timestamp", "")
+    body = req.get_data(as_text=True)
+
+    if not signature or not timestamp or not body:
+        return False
+
+    try:
+        verify_key = VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
+        verify_key.verify(
+            f"{timestamp}{body}".encode("utf-8"),
+            bytes.fromhex(signature)
+        )
+        return True
+    except (BadSignatureError, ValueError):
+        return False
 
 def normalize_text(value):
     return value.strip() if isinstance(value, str) else ""
@@ -269,6 +296,93 @@ def handle_telegram_text(chat_id, text):
     save_telegram_history(chat_id, updated_history)
     send_telegram_message(chat_id, reply)
 
+@app.route("/discord/interactions", methods=["POST"])
+def discord_interactions():
+    if not verify_discord_signature(request):
+        return jsonify({"error": "invalid request signature"}), 401
+
+    payload = request.get_json(silent=True) or {}
+
+    # Discord 驗證 endpoint 時會先送 PING
+    if payload.get("type") == 1:
+        return jsonify({"type": 1}), 200
+
+    # 目前只先處理 slash command
+    if payload.get("type") != 2:
+        return jsonify({
+            "type": 4,
+            "data": {
+                "content": "目前只支援 slash commands。"
+            }
+        }), 200
+
+    guild_id = str(payload.get("guild_id", ""))
+    channel_id = str(payload.get("channel_id", ""))
+
+    if DISCORD_ALLOWED_GUILD_ID and guild_id != DISCORD_ALLOWED_GUILD_ID:
+        return jsonify({
+            "type": 4,
+            "data": {
+                "content": "這個 server 尚未開放使用 molbot。"
+            }
+        }), 200
+
+    if DISCORD_ALLOWED_CHANNEL_ID and channel_id != DISCORD_ALLOWED_CHANNEL_ID:
+        return jsonify({
+            "type": 4,
+            "data": {
+                "content": "請到指定頻道使用 molbot。"
+            }
+        }), 200
+
+    data = payload.get("data", {})
+    command_name = data.get("name", "")
+    options = data.get("options", []) or []
+
+    option_map = {}
+    for item in options:
+        option_map[item.get("name")] = item.get("value")
+
+    if command_name == "ask":
+        user_message = str(option_map.get("message", "") or "").strip()
+
+        if not user_message:
+            return jsonify({
+                "type": 4,
+                "data": {
+                    "content": "請輸入問題內容。"
+                }
+            }), 200
+
+        return jsonify({
+            "type": 4,
+            "data": {
+                "content": f"Discord 已接通，收到你的問題：{user_message}"
+            }
+        }), 200
+
+    if command_name == "reset":
+        return jsonify({
+            "type": 4,
+            "data": {
+                "content": "Discord 測試版：重置指令已收到。"
+            }
+        }), 200
+
+    if command_name == "continue":
+        return jsonify({
+            "type": 4,
+            "data": {
+                "content": "Discord 測試版：續答指令已收到。"
+            }
+        }), 200
+
+    return jsonify({
+        "type": 4,
+        "data": {
+            "content": f"未知指令：{command_name}"
+        }
+    }), 200
 
 @app.route("/")
 def home():
