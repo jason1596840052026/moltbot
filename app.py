@@ -9,11 +9,11 @@ load_dotenv()
 app = Flask(__name__)
 
 ALLOWED_ORIGINS = [
-     "http://127.0.0.1:5500",
-                "http://127.0.0.1:5502",
-                "http://localhost:5500",
-                "http://localhost:5502",
-                "https://molbot-frontend.vercel.app"
+    "http://127.0.0.1:5500",
+    "http://127.0.0.1:5502",
+    "http://localhost:5500",
+    "http://localhost:5502",
+    "https://molbot-frontend.vercel.app"
 ]
 
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
@@ -21,6 +21,10 @@ CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 API_KEY = os.getenv("NVIDIA_API_KEY")
 MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+TELEGRAM_ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID", "").strip()
 
 SYSTEM_PROMPT = (
     "你是 molbot，一個以繁體中文回覆的 AI 助理。"
@@ -31,6 +35,10 @@ SYSTEM_PROMPT = (
 
 CONTINUE_PROMPT = "請接續上一則回答，從中斷處繼續，不要重複前文。"
 MAX_HISTORY = 10
+
+# Telegram 第一版：先用記憶體保存聊天上下文
+# 注意：Render 重啟後會消失，這一版先求最小可用
+TELEGRAM_CHAT_SESSIONS = {}
 
 
 def normalize_text(value):
@@ -59,6 +67,209 @@ def clean_history_items(history):
     return clean_history[-MAX_HISTORY:]
 
 
+def should_allow_continue(reply: str) -> bool:
+    text = normalize_text(reply)
+
+    if not text:
+        return False
+
+    stripped = text.strip()
+
+    incomplete_endings = (
+        "：", "、", ",", "，", "（", "(", "-", "—"
+    )
+
+    if stripped.endswith(incomplete_endings):
+        return True
+
+    if len(stripped) >= 1400:
+        return True
+
+    if stripped[-1] not in "。！？!?」』）)】":
+        return True
+
+    lowered = stripped.lower()
+
+    continue_hints = [
+        "未完待續",
+        "待續",
+        "下次繼續",
+        "下回繼續",
+        "剩下",
+        "後面還有",
+        "還有幾點",
+        "還有以下",
+        "先講前",
+        "先說前",
+        "如果你想知道剩下",
+        "我可以繼續介紹",
+        "我可以繼續說明",
+        "我可以接著講",
+        "需要的話我再繼續",
+        "若你想知道後續",
+        "如果你準備好",
+        "接下來我可以",
+    ]
+
+    if any(hint in stripped for hint in continue_hints):
+        return True
+
+    import re
+
+    numbered_points = re.findall(r"(?:^|\n)\s*(\d+)\.", stripped)
+    if numbered_points:
+        numbers = [int(n) for n in numbered_points]
+        max_number = max(numbers)
+
+        if max_number in (1, 2, 3, 4):
+            if any(keyword in stripped for keyword in ["前兩點", "前三點", "前四點", "剩下", "其餘", "另外"]):
+                return True
+
+    return False
+
+
+def build_continue_instruction():
+    return (
+        "請接續你上一則尚未完成的回答，從中斷處繼續，"
+        "直接延續內容，避免重複前面已經說過的內容。"
+    )
+
+
+def build_messages(message, history=None, is_continue_request=False):
+    clean_history = clean_history_items(history or [])
+
+    final_message = normalize_text(message)
+
+    if is_continue_request or final_message == CONTINUE_PROMPT:
+        final_message = build_continue_instruction()
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(clean_history)
+    messages.append({"role": "user", "content": final_message})
+
+    return messages
+
+
+def request_model_reply(message, history=None, is_continue_request=False):
+    if not API_KEY:
+        raise RuntimeError("NVIDIA_API_KEY is missing")
+
+    messages = build_messages(
+        message=message,
+        history=history,
+        is_continue_request=is_continue_request
+    )
+
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "max_tokens": 800,
+    }
+
+    response = requests.post(
+        NVIDIA_URL,
+        headers=headers,
+        json=payload,
+        timeout=60
+    )
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Model request failed: {response.text}")
+
+    result = response.json()
+    reply = (
+        result.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+        .strip()
+    )
+
+    if not reply:
+        raise RuntimeError("Model returned empty reply")
+
+    return reply
+
+
+def send_telegram_message(chat_id, text):
+    if not TELEGRAM_BOT_TOKEN:
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+
+    requests.post(url, json=payload, timeout=30)
+
+
+def get_telegram_history(chat_id):
+    return TELEGRAM_CHAT_SESSIONS.get(str(chat_id), [])
+
+
+def save_telegram_history(chat_id, history):
+    TELEGRAM_CHAT_SESSIONS[str(chat_id)] = clean_history_items(history)
+
+
+def handle_telegram_text(chat_id, text):
+    text = normalize_text(text)
+    history = get_telegram_history(chat_id)
+
+    if not text:
+        return
+
+    if text == "/start":
+        send_telegram_message(
+            chat_id,
+            "你好，我是 molbot。\n你現在可以直接輸入問題。\n可用指令：/reset、/continue"
+        )
+        return
+
+    if text == "/reset":
+        save_telegram_history(chat_id, [])
+        send_telegram_message(chat_id, "已清除這個 Telegram 對話的暫存上下文。")
+        return
+
+    if text == "/continue":
+        if not history:
+            send_telegram_message(chat_id, "目前沒有可接續的內容。")
+            return
+
+        reply = request_model_reply(
+            message="",
+            history=history,
+            is_continue_request=True
+        )
+
+        updated_history = history + [
+            {"role": "assistant", "content": reply}
+        ]
+        save_telegram_history(chat_id, updated_history)
+        send_telegram_message(chat_id, reply)
+        return
+
+    reply = request_model_reply(
+        message=text,
+        history=history,
+        is_continue_request=False
+    )
+
+    updated_history = history + [
+        {"role": "user", "content": text},
+        {"role": "assistant", "content": reply}
+    ]
+    save_telegram_history(chat_id, updated_history)
+    send_telegram_message(chat_id, reply)
+
+
 @app.route("/")
 def home():
     return jsonify({"message": "molbot backend is running"})
@@ -84,68 +295,16 @@ def chat():
                 "error_type": "bad_request"
             }), 400
 
-        clean_history = clean_history_items(history)
-
-        if is_continue_request:
-            message = (
-                "請接續你上一則尚未完成的回答，從中斷處繼續，"
-                "直接延續內容，避免重複前面已經說過的內容。"
-            )
-        elif message == CONTINUE_PROMPT:
-            message = (
-                "請接續你上一則尚未完成的回答，從中斷處繼續，"
-                "直接延續內容，避免重複前面已經說過的內容。"
-            )
-
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages.extend(clean_history)
-        messages.append({"role": "user", "content": message})
-
-        headers = {
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": MODEL,
-            "messages": messages,
-            "temperature": 0.6,
-            "top_p": 0.9,
-            "max_tokens": 800,
-        }
-
-        response = requests.post(
-            NVIDIA_URL,
-            headers=headers,
-            json=payload,
-            timeout=60
+        reply = request_model_reply(
+            message=message,
+            history=history,
+            is_continue_request=is_continue_request
         )
-
-        if response.status_code != 200:
-            return jsonify({
-                "error": "Model request failed",
-                "error_type": "upstream_api_error",
-                "details": response.text
-            }), response.status_code
-
-        result = response.json()
-        reply = (
-            result.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-            .strip()
-        )
-
-        if not reply:
-            return jsonify({
-                "error": "Model returned empty reply",
-                "error_type": "empty_reply"
-            }), 502
 
         return jsonify({
             "reply": reply,
             "model": MODEL,
-            "can_continue": True
+            "can_continue": should_allow_continue(reply)
         })
 
     except requests.exceptions.Timeout:
@@ -165,6 +324,43 @@ def chat():
         return jsonify({
             "error": str(e),
             "error_type": "internal_error"
+        }), 500
+
+
+@app.route("/telegram/webhook/<secret>", methods=["POST"])
+def telegram_webhook(secret):
+    try:
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "telegram is not configured"}), 500
+
+        if secret != TELEGRAM_WEBHOOK_SECRET:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+
+        data = request.get_json(silent=True) or {}
+        message_obj = data.get("message") or data.get("edited_message") or {}
+
+        chat = message_obj.get("chat", {}) if isinstance(message_obj, dict) else {}
+        chat_id = str(chat.get("id", "")).strip()
+        text = normalize_text(message_obj.get("text"))
+
+        if not chat_id:
+            return jsonify({"ok": True, "ignored": "no_chat_id"})
+
+        if TELEGRAM_ALLOWED_CHAT_ID and chat_id != TELEGRAM_ALLOWED_CHAT_ID:
+            return jsonify({"ok": True, "ignored": "unauthorized_chat"})
+
+        if not text:
+            send_telegram_message(chat_id, "目前第一版只支援純文字訊息。")
+            return jsonify({"ok": True, "ignored": "non_text_message"})
+
+        handle_telegram_text(chat_id, text)
+
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
         }), 500
 
 
