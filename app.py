@@ -1,10 +1,12 @@
 ﻿import os
 import requests
+import threading
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from flask_cors import CORS
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
+
 
 load_dotenv()
 
@@ -46,6 +48,101 @@ MAX_HISTORY = 10
 # Telegram 第一版：先用記憶體保存聊天上下文
 # 注意：Render 重啟後會消失，這一版先求最小可用
 TELEGRAM_CHAT_SESSIONS = {}
+
+DISCORD_CHAT_SESSIONS = {}
+
+
+def limit_discord_text(text, limit=1900):
+    text = normalize_text(text)
+
+    if len(text) <= limit:
+        return text
+
+    return text[: limit - 20].rstrip() + "\n\n[內容較長，已截斷]"
+
+
+def get_discord_session_key(guild_id, channel_id, user_id):
+    return f"{guild_id}:{channel_id}:{user_id}"
+
+
+def get_discord_history(session_key):
+    return DISCORD_CHAT_SESSIONS.get(session_key, [])
+
+
+def save_discord_history(session_key, history):
+    DISCORD_CHAT_SESSIONS[session_key] = clean_history_items(history)
+
+
+def edit_discord_original_response(interaction_token, content):
+    if not DISCORD_APPLICATION_ID or not interaction_token:
+        return
+
+    url = (
+        f"https://discord.com/api/v10/webhooks/"
+        f"{DISCORD_APPLICATION_ID}/{interaction_token}/messages/@original"
+    )
+
+    payload = {
+        "content": limit_discord_text(content)
+    }
+
+    requests.patch(url, json=payload, timeout=30)
+
+
+def handle_discord_ask_async(interaction_token, session_key, user_message):
+    try:
+        history = get_discord_history(session_key)
+
+        reply = request_model_reply(
+            message=user_message,
+            history=history,
+            is_continue_request=False
+        )
+
+        updated_history = history + [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": reply}
+        ]
+        save_discord_history(session_key, updated_history)
+
+        edit_discord_original_response(interaction_token, reply)
+
+    except Exception as e:
+        edit_discord_original_response(
+            interaction_token,
+            f"Discord ask 發生錯誤：{str(e)}"
+        )
+
+
+def handle_discord_continue_async(interaction_token, session_key):
+    try:
+        history = get_discord_history(session_key)
+
+        if not history:
+            edit_discord_original_response(
+                interaction_token,
+                "目前沒有可接續的內容。"
+            )
+            return
+
+        reply = request_model_reply(
+            message="",
+            history=history,
+            is_continue_request=True
+        )
+
+        updated_history = history + [
+            {"role": "assistant", "content": reply}
+        ]
+        save_discord_history(session_key, updated_history)
+
+        edit_discord_original_response(interaction_token, reply)
+
+    except Exception as e:
+        edit_discord_original_response(
+            interaction_token,
+            f"Discord continue 發生錯誤：{str(e)}"
+        )
 
 def verify_discord_signature(req):
     if not DISCORD_PUBLIC_KEY:
@@ -303,11 +400,9 @@ def discord_interactions():
 
     payload = request.get_json(silent=True) or {}
 
-    # Discord 驗證 endpoint 時會先送 PING
     if payload.get("type") == 1:
         return jsonify({"type": 1}), 200
 
-    # 目前只先處理 slash command
     if payload.get("type") != 2:
         return jsonify({
             "type": 4,
@@ -318,6 +413,7 @@ def discord_interactions():
 
     guild_id = str(payload.get("guild_id", ""))
     channel_id = str(payload.get("channel_id", ""))
+    interaction_token = str(payload.get("token", ""))
 
     if DISCORD_ALLOWED_GUILD_ID and guild_id != DISCORD_ALLOWED_GUILD_ID:
         return jsonify({
@@ -334,6 +430,13 @@ def discord_interactions():
                 "content": "請到指定頻道使用 molbot。"
             }
         }), 200
+
+    member = payload.get("member", {}) if isinstance(payload.get("member"), dict) else {}
+    member_user = member.get("user", {}) if isinstance(member.get("user"), dict) else {}
+    user_obj = payload.get("user", {}) if isinstance(payload.get("user"), dict) else {}
+    user_id = str(member_user.get("id") or user_obj.get("id") or "unknown")
+
+    session_key = get_discord_session_key(guild_id, channel_id, user_id)
 
     data = payload.get("data", {})
     command_name = data.get("name", "")
@@ -354,28 +457,41 @@ def discord_interactions():
                 }
             }), 200
 
-        return jsonify({
-            "type": 4,
-            "data": {
-                "content": f"Discord 已接通，收到你的問題：{user_message}"
-            }
-        }), 200
+        threading.Thread(
+            target=handle_discord_ask_async,
+            args=(interaction_token, session_key, user_message),
+            daemon=True
+        ).start()
+
+        return jsonify({"type": 5}), 200
 
     if command_name == "reset":
+        save_discord_history(session_key, [])
         return jsonify({
             "type": 4,
             "data": {
-                "content": "Discord 測試版：重置指令已收到。"
+                "content": "已清除這個 Discord 對話的暫存上下文。"
             }
         }), 200
 
     if command_name == "continue":
-        return jsonify({
-            "type": 4,
-            "data": {
-                "content": "Discord 測試版：續答指令已收到。"
-            }
-        }), 200
+        history = get_discord_history(session_key)
+
+        if not history:
+            return jsonify({
+                "type": 4,
+                "data": {
+                    "content": "目前沒有可接續的內容。"
+                }
+            }), 200
+
+        threading.Thread(
+            target=handle_discord_continue_async,
+            args=(interaction_token, session_key),
+            daemon=True
+        ).start()
+
+        return jsonify({"type": 5}), 200
 
     return jsonify({
         "type": 4,
@@ -383,7 +499,7 @@ def discord_interactions():
             "content": f"未知指令：{command_name}"
         }
     }), 200
-
+    
 @app.route("/")
 def home():
     return jsonify({"message": "molbot backend is running"})
