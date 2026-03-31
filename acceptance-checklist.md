@@ -2,17 +2,17 @@
 
 ## 驗收目標
 
-確認 molbot V1.5 第二輪在：
+確認 molbot V1.5 Stable 目前在：
 
 - 本地環境
 - Render 後端
 - Vercel 前端
 - 正式站前後端串接
-- Vercel Git 自動部署
+- Telegram webhook v1
 - 手機版輸入與介面穩定性
 - Render 雲端 Qwen 模型切換
 
-皆已達到可用狀態，並完成正式站驗收。
+皆已達到可用狀態。
 
 ---
 
@@ -24,7 +24,7 @@
 - 模型來源：NVIDIA API
 - 前端正式站：`https://molbot-frontend.vercel.app`
 - 後端正式站：`https://moltbot-ckvn.onrender.com`
-- 驗收版本：V1.5 第二輪
+- 驗收版本：V1.5 Stable
 - 正式站驗證日期：2026-03-30
 
 ---
@@ -50,196 +50,157 @@
 
 ---
 
-## B. 前端驗收
+## B. Render 後端驗收
 
-### B-1 前端頁面基本功能
-- [x] 可正常輸入訊息
-- [x] 可正常送出訊息
-- [x] 可顯示 AI 回覆
-- [x] 可顯示 loading / pending 狀態
-- [x] 可阻擋空白輸入
-- [x] 可顯示模型名稱
+### B-1 Render 部署正常
+- [x] Render web service 可正常存活
+- [x] 正式站可正常呼叫 `/health`
 
-### B-2 對話操作功能
-- [x] 清空聊天可正常使用
-- [x] 續答功能可正常使用
-- [x] localStorage 對話保存可正常使用
+### B-2 雲端 `/chat` 驗證正常
+- [x] Render `/chat` 可正常回覆
+- [x] Render `/chat` 已驗證實際呼叫 Qwen 模型
 
-### B-3 前端狀態管理
-- [x] 發送中禁止重複送出
-- [x] 發送中禁止重複續答
-- [x] 成功後按鈕狀態可正常恢復
-- [x] 失敗後按鈕狀態可正常恢復
-
-### B-4 結構整理
-- [x] `frontend/index.html` 已整理
-- [x] `frontend/style.css` 已整理
-- [x] `frontend/app.js` 已同步正式站版本
-- [x] 已補上 `sendBtn` click 綁定
-- [x] 已補上 `chatBox / modelInfo` fallback 相容目前 `index.html` 結構
+### B-3 環境變數正確
+- [x] `NVIDIA_API_KEY` 已設定
+- [x] `NVIDIA_MODEL=qwen/qwen3.5-122b-a10b` 已設定
+- [x] Telegram 相關環境變數已補齊
+- [x] Telegram 環境變數補齊後已重新部署
 
 ---
 
-## C. 上下文與續答驗收
+## C. Vercel 前端驗收
 
-### C-1 基本上下文
-- [x] 可承接最近對話內容
-- [x] 問答多輪後仍可維持基本上下文
+### C-1 前端可正常開啟
+- [x] 正式站首頁可正常載入
+- [x] 聊天介面可正常顯示
 
-### C-2 History 清洗策略
-- [x] history 已完成清洗
-- [x] history 已限制最近 10 筆
-- [x] 送出前會再次清洗空值
-- [x] 未出現明顯 history 無限制膨脹問題
+### C-2 前端串接正常
+- [x] 前端可正常送出訊息到 Render
+- [x] 前端可正常接收模型回覆
+- [x] 左上角模型名稱顯示正常
 
-### C-3 續答策略
-- [x] 已完成最小可用續答功能
-- [x] 回答中斷後可手動續答
-- [x] 續答後可延續既有回答方向
-- [x] 已降低續答時重複前文問題
-- [x] user / assistant / system 訊息流程已重整
-- [x] 錯誤訊息不寫入正式歷史紀錄
-- [x] 續答目前追加在同一則 assistant 訊息中，功能可用
+### C-3 API Base URL 策略正常
+- [x] 本地 `localhost / 127.0.0.1` 可走本機後端
+- [x] 正式站可走 Render 後端
 
 ---
 
-## D. 正式站驗收
+## D. 聊天功能驗收
 
-### D-1 前後端正式站串接
-- [x] Vercel 前端可正常呼叫 Render 後端
-- [x] 正式站可正常收發聊天訊息
+### D-1 基本聊天功能
+- [x] 一般提問可正常回覆
+- [x] 基本上下文可用
+- [x] 模型名稱可正確顯示
 
-### D-2 正式站驗收項目
-- [x] 基本連線：通過
-- [x] 上下文：通過
-- [x] 續答：通過
-- [x] localStorage：通過
-- [x] 清空聊天：通過
-- [x] 錯誤提示：通過
-- [x] UI 顯示：通過
+### D-2 續答功能
+- [x] 續答按鈕可用
+- [x] 續答可正常向後端送出請求
+- [x] 續答內容會補進同一則 assistant 訊息中
+- [x] 已做過一輪去重與體驗細修
 
-### D-3 第二輪正式站驗收項目
-- [x] 發送中禁止重複送出：通過
-- [x] 發送中禁止重複續答：通過
-- [x] 成功 / 失敗後正確恢復按鈕狀態：通過
-- [x] 續答去重基本可用：通過
-- [x] 正式站問答測試正常：通過
-- [x] 左上角模型名稱顯示正常：通過
+### D-3 localStorage
+- [x] 對話內容可保存
+- [x] 重整後對話仍可保留
+- [x] 清空聊天可正常清除
 
----
-
-## E. 錯誤處理驗收
-
-### E-1 後端關閉情境
-- [x] 後端關閉時前端可顯示錯誤提示
-
-### E-2 正常回應情境
-- [x] 後端正常回應時不會被前端誤判為錯誤
-
-### E-3 錯誤提示優化
-- [x] 前後端錯誤提示已完成基本優化
-- [x] Offline 測試可正常顯示錯誤
-- [x] 恢復網路並重整後，錯誤訊息不留在歷史紀錄中
+### D-4 按鈕與送出狀態
+- [x] 發送中不可重複送出
+- [x] 發送中不可重複續答
+- [x] 成功 / 失敗後按鈕狀態可恢復
 
 ---
 
-## F. 本地驗收
+## E. 顯示與版面驗收
 
-### F-1 本地聊天流程
-- [x] 本地測試正常
-- [x] 本地前端與後端可正常串接
+### E-1 Markdown 輕量顯示
+- [x] `**粗體**` 顯示正常
+- [x] 編號清單顯示正常
+- [x] 項目清單顯示正常
+- [x] 段落與換行顯示正常
 
-### F-2 本地對話體驗
-- [x] 續答可用
-- [x] localStorage 可用
-- [x] 清空聊天可用
-- [x] 上下文可用
-- [x] 發送中狀態控制可用
-
-### F-3 本地模型切換
-- [x] 本地主模型已切換為 `qwen/qwen3.5-122b-a10b`
-- [x] 本地前端左上角模型名稱可隨 `/chat` 回傳正確更新
+### E-2 介面體驗
+- [x] UI 閱讀性已改善
+- [x] assistant / user 顯示正常
+- [x] 錯誤訊息可正常顯示
+- [x] `style.css` 已補段落與清單樣式
 
 ---
 
-## G. 手機版驗收
+## F. 手機版驗收
 
-### G-1 輸入行為
-- [x] 手機按下換行不會直接送出
-- [x] 手機可正常輸入多行文字
+### F-1 輸入行為
+- [x] 手機按 Enter 不會直接送出
+- [x] 手機可正常換行
 
-### G-2 介面穩定性
-- [x] 手機鍵盤彈出時介面仍可正常操作
-- [x] 手機版畫面未出現主要操作阻塞問題
-
----
-
-## H. Render 雲端模型驗收
-
-### H-1 Render 環境變數
-- [x] 已於 Render 設定 `NVIDIA_MODEL=qwen/qwen3.5-122b-a10b`
-- [x] 已完成 `Save, rebuild, and deploy`
-
-### H-2 雲端 `/chat` 驗證
-- [x] 直接呼叫 `https://moltbot-ckvn.onrender.com/chat` 成功
-- [x] 回傳 JSON 含 `model: qwen/qwen3.5-122b-a10b`
-- [x] 回傳 JSON 含 `can_continue: true`
-- [x] 回傳內容正常
-
-### H-3 正式站同步驗證
-- [x] 正式站左上角模型名稱顯示 `qwen/qwen3.5-122b-a10b`
-- [x] 正式站送出測試正常
-- [x] 正式站續答測試正常
-- [x] 可判定雲端實際呼叫模型已切換為 Qwen
+### F-2 介面穩定性
+- [x] 手機鍵盤彈出時仍可正常操作
+- [x] 聊天畫面未出現明顯跑版
 
 ---
 
-## I. 文件與版本控制
+## G. Telegram webhook v1 驗收
 
-### I-1 文件同步
-- [x] README 已完成 V1.5 第二輪狀態同步
-- [x] acceptance-checklist 已完成第二輪正式站驗收結果同步
-- [x] 已補上雲端 Qwen 模型切換驗收結果
+### G-1 Bot 建立與設定
+- [x] Telegram Bot 已建立
+- [x] `TELEGRAM_BOT_TOKEN` 已取得
+- [x] `TELEGRAM_WEBHOOK_SECRET` 已設定
+- [x] `TELEGRAM_ALLOWED_CHAT_ID` 已確認並修正為正確值
 
-### I-2 Git 與部署
-- [x] frontend 已納入 Git 版本控制
-- [x] 最新前端修正已 commit 並 push
-- [x] 已完成 Vercel 手動重新部署
-- [x] 正式站已與本地一致
+### G-2 Webhook 設定
+- [x] `setWebhook` 成功
+- [x] `getWebhookInfo` 顯示正確 webhook URL
+- [x] `pending_update_count = 0`
+- [x] `last_error_message` 為空
 
-### I-3 Vercel Git 自動部署
-- [x] 已完成 Vercel Connect Git Repository
-- [x] repo：`jason1596840052026/moltbot`
-- [x] Production Branch：`main`
-- [x] Root Directory：`frontend`
-- [x] Framework Preset：`Other`
-- [x] push 後可自動觸發 deployment
-- [x] 修正 Root Directory 後正式站不再 404
+### G-3 Telegram 訊息驗證
+- [x] 直接 `sendMessage` 測試成功
+- [x] 手動 POST webhook 路由測試成功
+- [x] 真實 Telegram 私訊可收到 bot 回覆
+- [x] `/start` 可正常回覆
+- [x] 一般提問可正常回覆
+
+### G-4 Telegram 已知限制
+- [x] Telegram 上下文目前先存在記憶體
+- [x] Render 重啟後 Telegram 暫存上下文會消失
+- [x] Render Free 冷啟動時第一次請求可能較慢
+
+---
+
+## H. 文件與版本控制
+
+### H-1 文件同步
+- [x] `README.md` 已同步到目前版本狀態
+- [x] `acceptance-checklist.md` 已同步到 Telegram 完成版
+- [x] `progress.md` 已同步到 Telegram 完成版
+- [x] `commands.md` 已同步到 Telegram 完成版
+
+### H-2 Git 與部署
+- [x] 最新修改已 commit 並 push
+- [x] Render 已成功部署 Telegram webhook v1 版本
+- [x] 正式站與本地主要功能一致
 
 ---
 
 ## 驗收結論
 
 ### 結論
-- [x] molbot V1.5 第二輪完成
+- [x] molbot V1.5 Stable 可視為完成
 - [x] 本地驗收完成
 - [x] 正式站驗收完成
-- [x] Vercel Git 自動部署驗證完成
-- [x] 手機版輸入穩定性驗證完成
 - [x] Render 雲端 Qwen 模型切換完成
-- [x] 可進入下一階段穩定性優化與細修
+- [x] Telegram webhook v1 驗證完成
+- [x] 專案已達到可保存、可交接、可繼續擴充狀態
 
 ### 下一階段方向
-- [ ] 續答去重再細修
-- [ ] Markdown 顯示策略整理
-- [ ] UI / UX 小幅改善
-- [ ] assistant / user 顯示標籤穩定化
+- [ ] Discord 第一版串接
+- [ ] 平台訊息入口共用邏輯整理
+- [ ] Telegram 上下文持久化策略
+- [ ] UI / UX 後續細修
 - [ ] 文件持續同步
-- [ ] V1.5 後續優化規劃
 
 ---
 
 ## 備註
 
-目前 molbot 已達到穩定可用的最小 Web 聊天助理狀態。  
-下一輪應以穩定性、續答品質、Markdown 顯示策略、介面細修與文件一致性為優先，暫不優先擴充 Discord / Telegram。
+目前 molbot 已不只是最小 Web 聊天助理，也已完成 Telegram webhook 第一版。  
+下一輪若要繼續擴充，建議優先進入 Discord 串接與平台共用邏輯整理。
