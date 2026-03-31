@@ -79,7 +79,12 @@ def save_discord_history(session_key, history):
 
 
 def edit_discord_original_response(interaction_token, content):
-    if not DISCORD_APPLICATION_ID or not interaction_token:
+    if not DISCORD_APPLICATION_ID:
+        print("DISCORD_APPLICATION_ID is missing")
+        return
+
+    if not interaction_token:
+        print("interaction_token is missing")
         return
 
     url = (
@@ -91,7 +96,21 @@ def edit_discord_original_response(interaction_token, content):
         "content": limit_discord_text(content)
     }
 
-    requests.patch(url, json=payload, timeout=30)
+    headers = {
+        "User-Agent": "molbot/1.5 (Render; Discord interaction edit)"
+    }
+
+    response = requests.patch(
+        url,
+        json=payload,
+        headers=headers,
+        timeout=30
+    )
+
+    print("Discord edit status:", response.status_code)
+    print("Discord edit body:", response.text)
+
+    response.raise_for_status()
 
 
 def handle_discord_ask_async(interaction_token, session_key, user_message):
