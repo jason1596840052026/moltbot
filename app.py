@@ -425,15 +425,21 @@ def handle_telegram_text(chat_id, text):
 
 @app.route("/discord/interactions", methods=["POST"])
 def discord_interactions():
+    app.logger.info("Discord interaction received")
+
     if not verify_discord_signature(request):
+        app.logger.warning("Discord signature invalid")
         return jsonify({"error": "invalid request signature"}), 401
 
     payload = request.get_json(silent=True) or {}
+    app.logger.info("Discord payload type=%s", payload.get("type"))
 
     if payload.get("type") == 1:
+        app.logger.info("Discord PING received")
         return jsonify({"type": 1}), 200
 
     if payload.get("type") != 2:
+        app.logger.info("Unsupported Discord payload type=%s", payload.get("type"))
         return jsonify({
             "type": 4,
             "data": {
@@ -445,7 +451,14 @@ def discord_interactions():
     channel_id = str(payload.get("channel_id", ""))
     interaction_token = str(payload.get("token", ""))
 
+    app.logger.info(
+        "Discord command request guild=%s channel=%s",
+        guild_id,
+        channel_id
+    )
+
     if DISCORD_ALLOWED_GUILD_ID and guild_id != DISCORD_ALLOWED_GUILD_ID:
+        app.logger.warning("Discord guild blocked: %s", guild_id)
         return jsonify({
             "type": 4,
             "data": {
@@ -454,6 +467,7 @@ def discord_interactions():
         }), 200
 
     if DISCORD_ALLOWED_CHANNEL_ID and channel_id != DISCORD_ALLOWED_CHANNEL_ID:
+        app.logger.warning("Discord channel blocked: %s", channel_id)
         return jsonify({
             "type": 4,
             "data": {
@@ -472,14 +486,18 @@ def discord_interactions():
     command_name = data.get("name", "")
     options = data.get("options", []) or []
 
+    app.logger.info("Discord command=%s", command_name)
+
     option_map = {}
     for item in options:
         option_map[item.get("name")] = item.get("value")
 
     if command_name == "ask":
         user_message = str(option_map.get("message", "") or "").strip()
+        app.logger.info("Discord ask message len=%s", len(user_message))
 
         if not user_message:
+            app.logger.warning("Discord ask empty message")
             return jsonify({
                 "type": 4,
                 "data": {
@@ -493,10 +511,12 @@ def discord_interactions():
             daemon=True
         ).start()
 
+        app.logger.info("Discord ask deferred")
         return jsonify({"type": 5}), 200
 
     if command_name == "reset":
         save_discord_history(session_key, [])
+        app.logger.info("Discord reset done")
         return jsonify({
             "type": 4,
             "data": {
@@ -506,8 +526,10 @@ def discord_interactions():
 
     if command_name == "continue":
         history = get_discord_history(session_key)
+        app.logger.info("Discord continue history_len=%s", len(history))
 
         if not history:
+            app.logger.info("Discord continue no history")
             return jsonify({
                 "type": 4,
                 "data": {
@@ -521,8 +543,10 @@ def discord_interactions():
             daemon=True
         ).start()
 
+        app.logger.info("Discord continue deferred")
         return jsonify({"type": 5}), 200
 
+    app.logger.info("Discord unknown command=%s", command_name)
     return jsonify({
         "type": 4,
         "data": {
